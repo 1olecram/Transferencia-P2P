@@ -1,26 +1,21 @@
 import os
-
-def split_file(file_path, size, output_dir='parts'):
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        
-    with open(file_path, 'rb') as f:
-        chunk_num = 0
-        while True:
-            chunk = f.read(size)
-            if not chunk:
-                break
-            
-            chunk_path = os.path.join(output_dir, f'chunk_{chunk_num}')
-            with open(chunk_path, 'wb') as chunk_file:
-                chunk_file.write(chunk)
-            print(f"Salvo: {chunk_path}")
-            
-            chunk_num += 1
+from FileMetadata import FileMetadata
 
 def main():
     size = 1024 # 1kb
-    split_file('base_files/file_A.bin', size)
+    file_path = 'base_files/file_A.bin'
+    
+    print(f"Processando arquivo: {file_path}")
+    
+    # Cria o objeto de metadados
+    metadata = FileMetadata(file_path, size)
+    
+    # Processa o arquivo (lê, divide em partes e calcula os hashes)
+    metadata.process_file(output_dir='parts')
+    
+    # Salva o arquivo .json com a estrutura para os Leechers
+    json_path = os.path.join('parts', f'{metadata.original_name}_metadata.json')
+    metadata.save_to_json(json_path)
 
 if __name__ == "__main__":
     main()
