@@ -17,8 +17,8 @@ class Peer:
         server_socket (socket.socket): O socket TCP principal configurado para escuta.
         running (bool): Flag de controle indicando se o servidor P2P local está ativo.
     """
-    def __init__(self, host='0.0.0.0', port=5000):
-        """Inicializa a configuração de rede e o socket do Peer.
+    def __init__(self, host='0.0.0.0', port=5000, storage_dir="parts"):
+        """Inicializa a configuração de rede, o diretório de armazenamento e o socket do Peer.
 
         Cria um socket TCP/IP de fluxo (stream), aplica a opção de reuso de endereço
         (SO_REUSEADDR) para evitar bloqueios de porta após encerramentos rápidos e faz
@@ -27,9 +27,12 @@ class Peer:
         Args:
             host (str, optional): IP de vinculação. Padrão é '0.0.0.0'.
             port (int, optional): Porta TCP para vinculação do servidor local. Padrão é 5000.
+            storage_dir (str, optional): Diretório físico onde os chunks deste Peer serão
+                salvos ou de onde serão lidos. Padrão é "parts".
         """
         self.host = host
         self.port = port
+        self.storage_dir = storage_dir
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
@@ -74,13 +77,37 @@ class Peer:
                 # Ocorre normalmente quando o socket é fechado pelo método stop()
                 break
                 
+    def get_available_chunks(self):
+        """Escaneia o diretório de armazenamento e lista os chunks disponíveis.
+
+        Varre o diretório configurado em `storage_dir` buscando por arquivos que
+        iniciam com o prefixo 'chunk_'. Para cada um encontrado, extrai a identificação
+        numérica do chunk.
+
+        Returns:
+            list[int]: Lista ordenada contendo os IDs dos chunks que este Peer
+                possui localmente.
+        """
+        chunks = []
+        if os.path.exists(self.storage_dir):
+            for name in os.listdir(self.storage_dir):
+                if name.startswith("chunk_"):
+                    try:
+                        chunk_id = int(name.split("_")[1])
+                        chunks.append(chunk_id)
+                    except (ValueError, IndexError):
+                        pass
+        chunks.sort()
+        return chunks
+
     def _handle_client(self, conn, addr):
         """Processa a requisição de um cliente conectado, enviando o chunk solicitado.
 
-        Interpreta a mensagem enviada pelo cliente. A mensagem esperada segue o formato
-        "GET_CHUNK:<id>". Caso o bloco físico correspondente exista localmente dentro
-        da pasta de partes, o Peer lê o arquivo binário e o envia integralmente de volta
-        ao cliente.
+        Interpreta a mensagem enviada pelo cliente.
+        Suporta os seguintes comandos:
+        - "GET_AVAILABLE_CHUNKS": Retorna uma lista de IDs de chunks disponíveis separada por vírgula.
+        - "GET_CHUNK:<id>": Caso o bloco físico correspondente exista localmente dentro
+          da pasta configurada, lê o arquivo binário e o envia de volta ao cliente.
 
         Args:
             conn (socket.socket): O socket de conexão ativa com o cliente.
@@ -91,9 +118,14 @@ class Peer:
                 # Recebe a requisição do cliente
                 data = conn.recv(1024).decode('utf-8').strip()
                 
-                if data.startswith("GET_CHUNK:"):
+                if data == "GET_AVAILABLE_CHUNKS":
+                    available = self.get_available_chunks()
+                    response = ",".join(str(cid) for cid in available)
+                    conn.sendall(response.encode('utf-8'))
+                    
+                elif data.startswith("GET_CHUNK:"):
                     chunk_id = data.split(":")[1]
-                    file_path = os.path.join("parts", f"chunk_{chunk_id}")
+                    file_path = os.path.join(self.storage_dir, f"chunk_{chunk_id}")
                     
                     if os.path.exists(file_path):
                         with open(file_path, 'rb') as f:
@@ -114,58 +146,78 @@ class Peer:
         self.running = False
         self.server_socket.close()
 
+    def request_available_chunks(self, target_port, target_host='127.0.0.1'):
+        """Solicita a lista de chunks disponíveis de um nó vizinho.
+
+        Conecta-se ao socket TCP do Peer destino na porta especificada e envia
+        a requisição 'GET_AVAILABLE_CHUNKS'. Aguarda o retorno da lista de chunks
+        e a decodifica de volta em uma lista de inteiros.
+
+        Args:
+            target_port (int): Porta TCP do Peer vizinho.
+            target_host (str, optional): Endereço IP do Peer vizinho. Padrão é '127.0.0.1'.
+
+        Returns:
+            list[int]: Lista contendo os IDs dos chunks disponíveis no vizinho,
+                ou uma lista vazia em caso de falha de conexão ou ausência de blocos.
+        """
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.settimeout(1.5)
+        try:
+            client_socket.connect((target_host, target_port))
+            client_socket.sendall(b"GET_AVAILABLE_CHUNKS")
+            response = client_socket.recv(4096).decode('utf-8').strip()
+            if not response:
+                return []
+            return [int(cid) for cid in response.split(",") if cid.isdigit()]
+        except (ConnectionRefusedError, socket.timeout, OSError):
+            return []
+        except Exception as e:
+            print(f"[Peer] Erro ao obter chunks disponíveis do vizinho {target_port}: {e}")
+            return []
+        finally:
+            client_socket.close()
+
     def request_chunk(self, target_port, chunk_id, target_host='127.0.0.1'):
         """Atua como cliente (Leecher) para solicitar e baixar um chunk específico de outro Peer.
 
         Cria um socket TCP temporário de cliente, conecta-se ao host e porta informados
         e envia a mensagem de protocolo estruturada ("GET_CHUNK:<id>"). Em seguida, recebe
         os dados em blocos sucessivos e salva o conteúdo de forma binária em um arquivo de bloco
-        localmente dentro do diretório 'parts'.
+        localmente dentro do diretório configurado.
 
         Args:
             target_port (int): A porta TCP do Peer destino ao qual se conectar.
             chunk_id (str ou int): O identificador do bloco do arquivo requisitado.
             target_host (str, optional): O endereço IP do Peer destino. Padrão é '127.0.0.1'.
 
-        Raises:
-            ConnectionRefusedError: Se o Peer destino não estiver executando ou não puder
-                ser alcançado na porta especificada.
-            Exception: Se ocorrer qualquer outro erro de rede, E/S ou transferência de dados.
+        Returns:
+            bool: True se o download foi bem-sucedido, False caso contrário.
         """
-        # 1. Cria o socket para atuar como cliente
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
+        client_socket.settimeout(3.0)
+        success = False
         try:
-            # 2. Inicia a conexão com a porta do outro Peer local
             print(f"[Peer] Solicitando chunk {chunk_id} para a porta {target_port}...")
             client_socket.connect((target_host, target_port))
             
-            # 3. Formata e envia a requisição esperada pelo servidor
             request_msg = f"GET_CHUNK:{chunk_id}"
             client_socket.sendall(request_msg.encode('utf-8'))
             
-            # 4. Recebe o arquivo em blocos
             received_data = b""
             while True:
-                # Lê até 4096 bytes por vez. O recv vai bloquear até chegar dado.
                 data_chunk = client_socket.recv(4096)
-                
-                # Se recv retornar vazio, significa que o servidor terminou de enviar e fechou a conexão
                 if not data_chunk:
                     break
-                    
                 received_data += data_chunk
                 
-            # 5. Se recebemos algum dado, salvamos no disco
             if received_data:
-                # Garante que a pasta 'parts' existe para não dar erro
-                os.makedirs("parts", exist_ok=True)
-                
-                file_path = os.path.join("parts", f"chunk_{chunk_id}")
+                os.makedirs(self.storage_dir, exist_ok=True)
+                file_path = os.path.join(self.storage_dir, f"chunk_{chunk_id}")
                 with open(file_path, 'wb') as f:
                     f.write(received_data)
-                    
                 print(f"[Peer] Chunk {chunk_id} recebido e salvo com sucesso em '{file_path}'.")
+                success = True
             else:
                 print(f"[Peer] O Peer na porta {target_port} não enviou dados para o chunk {chunk_id}.")
                 
@@ -174,5 +226,6 @@ class Peer:
         except Exception as e:
             print(f"[Peer] Erro durante a transferência com a porta {target_port}: {e}")
         finally:
-            # 6. Sempre feche o socket do cliente após o uso
             client_socket.close()
+        return success
+
