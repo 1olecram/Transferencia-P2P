@@ -3,9 +3,30 @@ import threading
 import os
 
 class Peer:
+    """Representa um nó (Peer) em uma rede de transferência de arquivos P2P.
+
+    Um Peer nesta rede híbrida atua simultaneamente como um servidor (Seeder),
+    ouvindo conexões de rede em uma thread dedicada para fornecer blocos (chunks)
+    de arquivos que possui localmente, e como um cliente (Leecher), conectando-se
+    a outros Peers ativos para solicitar blocos específicos de arquivos.
+
+    Attributes:
+        host (str): O endereço de IP que o Peer usará para se ligar na rede.
+            Padrão é '0.0.0.0' para aceitar conexões em todas as interfaces de rede.
+        port (int): A porta TCP específica na qual o Peer irá escutar conexões de entrada.
+        server_socket (socket.socket): O socket TCP principal configurado para escuta.
+        running (bool): Flag de controle indicando se o servidor P2P local está ativo.
+    """
     def __init__(self, host='0.0.0.0', port=5000):
-        """
-        Configuração de network e portas
+        """Inicializa a configuração de rede e o socket do Peer.
+
+        Cria um socket TCP/IP de fluxo (stream), aplica a opção de reuso de endereço
+        (SO_REUSEADDR) para evitar bloqueios de porta após encerramentos rápidos e faz
+        o bind para o host e porta especificados.
+
+        Args:
+            host (str, optional): IP de vinculação. Padrão é '0.0.0.0'.
+            port (int, optional): Porta TCP para vinculação do servidor local. Padrão é 5000.
         """
         self.host = host
         self.port = port
@@ -15,6 +36,12 @@ class Peer:
         self.running = False
         
     def start_listening(self):
+        """Ativa o servidor P2P e inicia a thread dedicada para escuta de conexões de entrada.
+
+        Coloca o socket local em modo de escuta (listening) com limite de fila de conexões pendentes.
+        Posteriormente, dispara de maneira assíncrona (em segundo plano) uma thread daemonizada
+        responsável por aceitar conexões contínuas sem bloquear a execução principal.
+        """
         self.running = True
         self.server_socket.listen(5)
         print(f"[Peer] Ouvindo na porta {self.port}...")
@@ -25,6 +52,17 @@ class Peer:
         listen_thread.start()
         
     def _accept_connections(self):
+        """Loop contínuo de escuta para aceitar novas conexões de entrada de outros Peers.
+
+        Executa de forma ininterrupta enquanto o Peer estiver ativo (`self.running == True`).
+        Ao receber uma nova conexão de cliente, delega o atendimento para uma thread
+        daemonizada secundária, garantindo concorrência e que múltiplos leechers possam
+        baixar blocos ao mesmo tempo.
+
+        Raises:
+            OSError: Captura silenciosamente erros de socket quando o socket é fechado
+                intencionalmente através do método `stop()`.
+        """
         while self.running:
             try:
                 conn, addr = self.server_socket.accept()
@@ -37,6 +75,17 @@ class Peer:
                 break
                 
     def _handle_client(self, conn, addr):
+        """Processa a requisição de um cliente conectado, enviando o chunk solicitado.
+
+        Interpreta a mensagem enviada pelo cliente. A mensagem esperada segue o formato
+        "GET_CHUNK:<id>". Caso o bloco físico correspondente exista localmente dentro
+        da pasta de partes, o Peer lê o arquivo binário e o envia integralmente de volta
+        ao cliente.
+
+        Args:
+            conn (socket.socket): O socket de conexão ativa com o cliente.
+            addr (tuple): Uma tupla (IP, Porta) contendo os dados de endereço do cliente.
+        """
         with conn:
             try:
                 # Recebe a requisição do cliente
@@ -57,12 +106,32 @@ class Peer:
                 print(f"[Peer] Erro na conexão com {addr}: {e}")
 
     def stop(self):
+        """Encerra com segurança o servidor P2P local.
+
+        Desativa o loop de conexão principal definindo o flag `running` para falso e
+        fecha o socket do servidor, forçando a liberação da porta TCP associada.
+        """
         self.running = False
         self.server_socket.close()
 
     def request_chunk(self, target_port, chunk_id, target_host='127.0.0.1'):
-        """ Atua como Cliente: Conecta em outro Peer e pede um chunk específico. """
-        
+        """Atua como cliente (Leecher) para solicitar e baixar um chunk específico de outro Peer.
+
+        Cria um socket TCP temporário de cliente, conecta-se ao host e porta informados
+        e envia a mensagem de protocolo estruturada ("GET_CHUNK:<id>"). Em seguida, recebe
+        os dados em blocos sucessivos e salva o conteúdo de forma binária em um arquivo de bloco
+        localmente dentro do diretório 'parts'.
+
+        Args:
+            target_port (int): A porta TCP do Peer destino ao qual se conectar.
+            chunk_id (str ou int): O identificador do bloco do arquivo requisitado.
+            target_host (str, optional): O endereço IP do Peer destino. Padrão é '127.0.0.1'.
+
+        Raises:
+            ConnectionRefusedError: Se o Peer destino não estiver executando ou não puder
+                ser alcançado na porta especificada.
+            Exception: Se ocorrer qualquer outro erro de rede, E/S ou transferência de dados.
+        """
         # 1. Cria o socket para atuar como cliente
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         
