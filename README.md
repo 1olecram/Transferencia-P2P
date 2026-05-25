@@ -29,6 +29,7 @@ dd if=/dev/urandom of=file_C.bin bs=1M count=10   # Arquivo Grande (10 MB)
 dd if=/dev/urandom of=file_Avt.bin bs=1K count=20 # Arquivo Pequeno Variável (20 KB)
 dd if=/dev/urandom of=file_Bvt.bin bs=1M count=5  # Arquivo Médio Variável (5 MB)
 dd if=/dev/urandom of=file_Cvt.bin bs=1M count=20 # Arquivo Grande Variável (20 MB)
+```
 
 ## 🚀 Como Executar e Testar
 
