@@ -4,41 +4,74 @@ Este projeto consiste na implementação de um sistema elementar de transferênc
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## 🛠️ Tecnologias e Recursos Utilizados
 
-*   **Linguagem:** Python 3.x
-*   **Bibliotecas Nativas:** `socket` (rede), `threading` (concorrência paralela), `hashlib` (checksum SHA-256), `json` (metadados).
+O projeto foi construído utilizando **Python 3** e depende estritamente de bibliotecas nativas de baixo nível do ecossistema Python, não sendo necessária a instalação de nenhuma dependência de terceiros:
+
+*   **`socket`**: Utilizado para gerenciar a comunicação de rede de baixo nível, operando sobre sockets TCP. A transferência de dados implementa **conexões persistentes**, onde um Leecher estabelece uma única sessão com o Seeder para transferir múltiplos blocos em lote, otimizando drasticamente a vazão e prevenindo a exaustão de portas efêmeras no sistema operacional.
+*   **`threading`**: Utilizado para gerenciar a concorrência paralela do nó P2P. Uma thread dedica-se a escutar conexões de entrada na porta TCP designada, enquanto novas conexões de clientes são respondidas paralelamente de forma assíncrona, garantindo que o Peer possa servir chunks enquanto baixa outros concorrentemente.
+*   **`hashlib`**: Utilizado para calcular hashes SHA-256 para cada bloco virtual de dados e validar a integridade final do arquivo remontado contra o hash global gerado no Seeder inicial.
+*   **`json`**: Utilizado para serialização e persistência de metadados estruturados de compartilhamento de arquivos.
+*   **`argparse`**: Utilizado para realizar o parsing de argumentos passados via terminal na inicialização dos nós.
+*   **`os` / `sys` / `time`**: Utilizados para manipulação de arquivos do sistema operacional, controle de buffers binários na memória e temporização de tentativas.
 
 ---
 
-## 🚀 Como Executar e Testar
+## 🚀 Como Executar e Testar Manualmente
 
-Para testar o sistema, utilizaremos múltiplas instâncias em portas locais simulando a rede P2P.
+Para simular o funcionamento da rede distribuída P2P de forma manual, usaremos múltiplos terminais na mesma máquina local (localhost) apontando portas vizinhas estáticas.
+
+O projeto possui um conjunto de arquivos pré-gerados dentro do diretório `base_files/` correspondentes aos cenários de testes sugeridos no trabalho.
 
 ### Passo 1: Iniciar o Seeder (Nó com o arquivo original)
-O Seeder irá ler o arquivo original, dividi-lo em pedaços e criar o arquivo JSON de metadados. O número de portas de vizinhos passadas pode ser qualquer um (ex: testar com 2, 3, 4 ou mais peers).
+O Seeder lê o arquivo binário original sob demanda e disponibiliza seus blocos aos vizinhos na porta estipulada, criando também o arquivo de metadados em formato JSON.
 
+Abra o primeiro terminal e execute:
 ```bash
-# Executa o nó na porta 5001, tendo como vizinhos as portas 5002 e 5003 (Cenário de 3 Peers)
-python3 main.py 5001 5002 5003 -f base_files/file_A.bin
-
-# Ou com a flag opcional de customização do tamanho do bloco (ex: 4096 bytes)
-python3 main.py 5001 5002 5003 -f base_files/file_A.bin -s 4096
+# Executa o nó na porta 5001, tendo como vizinho a porta 5002
+python3 main.py 5001 5002 -f base_files/file_A.bin
 ```
+*   **`5001`**: A porta local do Seeder.
+*   **`5002`**: A porta do vizinho configurada de forma estática.
+*   **`-f base_files/file_A.bin`**: Caminho do arquivo original compartilhado.
 
-### Passo 2: Iniciar os Leechers (Nós que desejam baixar o arquivo)
-Em outros terminais, execute os Leechers passando o caminho do arquivo de metadados gerado na pasta do Seeder (`parts_5001`) e a lista de seus respectivos vizinhos:
-
-```bash
-# Executa o Leecher na porta 5002, tendo 5001 e 5003 como vizinhos
-python3 main.py 5002 5001 5003 -m parts_5001/file_A.bin_metadata.json
-```
+> [!TIP]
+> **Ajuste de Tamanho do Bloco:** Você pode ajustar manualmente o tamanho de fragmentação dos blocos virtuais passando a flag `--block-size` ou `-s` seguida do valor em bytes (por padrão é `1024` ou 1 KB). Exemplo para 4 KB:
+> ```bash
+> python3 main.py 5001 5002 -f base_files/file_A.bin -s 4096
+> ```
 
 ---
 
-## 👥 Cenário de Teste com 4 Peers (Múltiplos Vizinhos)
+### Passo 2: Iniciar o Leecher (Nó receptor)
+Abra um segundo terminal. O Leecher precisa carregar os metadados JSON gerados pelo Seeder inicial para saber como remontar e validar o arquivo. Esse arquivo de metadados foi salvo na pasta do Seeder (`parts_5001`).
 
-O argumento de vizinhos é dinâmico. Para testar com **4 peers** simultâneos ativos (portas 5001, 5002, 5003 e 5004), cada nó deve ser iniciado especificando todos os outros nós como vizinhos:
+Execute o Leecher no segundo terminal:
+```bash
+# Executa o Leecher na porta 5002, apontando para o Seeder 5001 e usando seus metadados
+python3 main.py 5002 5001 -m parts_5001/file_A.bin_metadata.json
+```
+*   **`5002`**: A porta local do Leecher.
+*   **`5001`**: A porta do vizinho (Seeder).
+*   **`-m parts_5001/...`**: O caminho do arquivo JSON de metadados estruturados.
+
+---
+
+### Passo 3: Interagindo com a CLI (Terminal Interativo)
+Ao iniciar um Leecher ou Seeder, você terá acesso a um terminal interativo com comandos integrados para controle manual:
+
+*   `status`                  - Testa conexões TCP com os vizinhos pré-configurados e exibe o estado (Online / Offline).
+*   `blocks`                  - Exibe visualmente o progresso dos blocos em memória (`[x]` se presente, `[ ]` se ausente).
+*   `get <chunk_id> <porta>`  - Requisita manualmente um único chunk binário de uma porta específica e valida seu hash SHA-256.
+*   `download`                - Inicia a transferência P2P automática de alta velocidade usando a conexão persistente para baixar e validar sequencialmente todos os chunks ausentes de vizinhos online.
+*   `load_metadata <caminho>` - Carrega um novo arquivo de metadados estruturados JSON para preparar o Peer local.
+*   `help`                    - Exibe a lista de comandos e explicações.
+*   `exit` ou `quit`          - Encerra o nó com segurança, fechando sockets de rede abertos e liberando recursos.
+
+---
+
+### 👥 Cenário de Teste com 4 Peers (Topologia Estática Completa)
+Você pode rodar topologias mais complexas abrindo mais terminais. Para simular 4 Peers, iniciamos cada um conhecendo todas as portas dos demais vizinhos:
 
 ```bash
 # Terminal 1 - Seeder (porta 5001, vizinhos: 5002, 5003 e 5004)
@@ -54,16 +87,4 @@ python3 main.py 5003 5001 5002 5004 -m parts_5001/file_A.bin_metadata.json
 python3 main.py 5004 5001 5002 5003 -m parts_5001/file_A.bin_metadata.json
 ```
 
----
-
-## 💻 Comandos da CLI Interativa
-
-Uma vez inicializado o nó, você terá acesso ao terminal interativo com os seguintes comandos:
-
-*   `status`                  - Testa a conexão TCP e mostra quais vizinhos estão Online/Offline.
-*   `blocks`                  - Exibe graficamente quais blocos do arquivo você possui localmente (`[x]` ou `[ ]`).
-*   `get <chunk_id> <porta>`  - Baixa e valida manualmente um bloco específico de um vizinho na porta informada.
-*   `download`                - Inicia a transferência P2P automatizada e cooperativa dos blocos ausentes.
-*   `load_metadata <caminho>` - Carrega um novo arquivo de metadados JSON.
-*   `help`                    - Exibe o menu de ajuda com a lista de comandos.
-*   `exit` ou `quit`          - Encerra o nó P2P com segurança, fechando todas as conexões.
+Uma vez ativos, digite `download` nos terminais dos leechers. À medida que eles baixam e validam seus respectivos chunks, eles se tornam seeders temporários em tempo real para os outros nós concorrentes.

@@ -1,8 +1,8 @@
-"""Script principal CLI para execução e gerenciamento de um nó P2P (Peer).
+"""Script de entrada principal CLI para execução do nó Peer-to-Peer.
 
-Este script atua como o ponto de entrada principal do programa e o "ponto de união"
-de toda a arquitetura orientada a objetos. Ele analisa os argumentos da linha de comando,
-inicializa e configura os componentes FileMetadata e Peer, e dispara a CLI interativa.
+Este script é o ponto de entrada do sistema. Ele faz a análise sintática das flags de linha
+de comando, inicializa os componentes de rede (Peer) e dados (FileMetadata) e dispara a
+interface de comando interativa (CLI).
 """
 
 import argparse
@@ -14,9 +14,8 @@ from CLI import CLI
 from Peer import Peer
 from FileMetadata import FileMetadata
 
-
 def main():
-    """Função principal que analisa argumentos, inicializa e roda o nó P2P com sua CLI."""
+    """Analisa os argumentos de linha de comando e gerencia o ciclo de vida do nó P2P."""
     parser = argparse.ArgumentParser(
         description="Inicializa um nó P2P CLI unificado com escuta e sincronização automatizada."
     )
@@ -62,7 +61,6 @@ def main():
     metadata = None
     blocks_present = None
 
-    # Configuração inicial do nó (Seeder vs Leecher)
     if args.file:
         if not os.path.exists(args.file):
             print(f"[Erro] Arquivo original não encontrado: {args.file}")
@@ -70,7 +68,7 @@ def main():
 
         print(f"\n[Seeder] Processando e fragmentando o arquivo: {args.file} (Tamanho do Bloco: {args.block_size} bytes)")
         metadata_obj = FileMetadata(args.file, args.block_size)
-        metadata_obj.process_file(output_dir=storage_dir)
+        metadata_obj.process_file()
 
         json_path = os.path.join(storage_dir, f"{metadata_obj.original_name}_metadata.json")
         metadata_obj.save_to_json(json_path)
@@ -95,16 +93,15 @@ def main():
         print("\n[Aviso] Iniciando sem arquivo ou metadados associados.")
         print("Digite 'load_metadata <caminho>' na CLI para preparar para download.")
 
-    # Criação do Peer
     peer = Peer(
         port=minha_porta,
         vizinhos=vizinhos,
         storage_dir=storage_dir,
         metadata=metadata,
-        blocks_present=blocks_present
+        blocks_present=blocks_present,
+        original_file_path=args.file
     )
 
-    # Inicialização da escuta TCP
     try:
         peer.start_listening()
     except Exception as e:
@@ -114,16 +111,13 @@ def main():
 
     time.sleep(0.5)
 
-    # Validação inicial de blocos para Leecher
     if args.metadata and peer.metadata:
         peer.validate_and_update_blocks()
         downloaded = sum(peer.blocks_present) if peer.blocks_present else 0
         print(f"[Leecher] Chunks válidos detectados localmente: {downloaded}/{peer.metadata['num_blocks']}")
 
-    # Cria e inicializa a CLI
     cli = CLI(peer=peer)
     cli.run()
-
 
 if __name__ == "__main__":
     main()
