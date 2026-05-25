@@ -11,26 +11,6 @@ Este projeto consiste na implementação de um sistema elementar de transferênc
 
 ---
 
-## 📂 Geração dos Arquivos de Teste
-
-Para cumprir os parâmetros de configuração base e simular um ambiente de rede real, os arquivos de teste foram gerados utilizando o utilitário nativo do Linux `dd`. 
-
-Esta abordagem garante a criação de arquivos binários com tamanhos precisos e conteúdo aleatório (entropia alta) único, o que é essencial para validar de forma confiável a integridade da transferência via algoritmo SHA-256.
-
-Para preparar o seu ambiente, você pode utilizar os seguintes comandos no terminal:
-
-```bash
-# Arquivos de Teste Padrão
-dd if=/dev/urandom of=file_A.bin bs=1K count=10   # Arquivo Pequeno (10 KB)
-dd if=/dev/urandom of=file_B.bin bs=1M count=1    # Arquivo Médio (1 MB)
-dd if=/dev/urandom of=file_C.bin bs=1M count=10   # Arquivo Grande (10 MB)
-
-# Arquivos de Teste Variáveis
-dd if=/dev/urandom of=file_Avt.bin bs=1K count=20 # Arquivo Pequeno Variável (20 KB)
-dd if=/dev/urandom of=file_Bvt.bin bs=1M count=5  # Arquivo Médio Variável (5 MB)
-dd if=/dev/urandom of=file_Cvt.bin bs=1M count=20 # Arquivo Grande Variável (20 MB)
-```
-
 ## 🚀 Como Executar e Testar
 
 Para testar o sistema, utilizaremos múltiplas instâncias em portas locais simulando a rede P2P.
