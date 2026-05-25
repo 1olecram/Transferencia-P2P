@@ -16,23 +16,42 @@ Este projeto consiste na implementação de um sistema elementar de transferênc
 Para testar o sistema, utilizaremos múltiplas instâncias em portas locais simulando a rede P2P.
 
 ### Passo 1: Iniciar o Seeder (Nó com o arquivo original)
-O Seeder irá ler o arquivo original, dividi-lo em pedaços e criar o arquivo JSON de metadados.
+O Seeder irá ler o arquivo original, dividi-lo em pedaços e criar o arquivo JSON de metadados. O número de portas de vizinhos passadas pode ser qualquer um (ex: testar com 2, 3, 4 ou mais peers).
 
 ```bash
-# Executa o nó na porta 5001, tendo como vizinhos as portas 5002 e 5003
+# Executa o nó na porta 5001, tendo como vizinhos as portas 5002 e 5003 (Cenário de 3 Peers)
 python3 main.py 5001 5002 5003 -f base_files/file_A.bin
-```
-*(Opcional) Você pode definir o tamanho do bloco (padrão é 1024 bytes) com a flag `-s` ou `--block-size`:*
-```bash
+
+# Ou com a flag opcional de customização do tamanho do bloco (ex: 4096 bytes)
 python3 main.py 5001 5002 5003 -f base_files/file_A.bin -s 4096
 ```
 
-### Passo 2: Iniciar o Leecher (Nó que deseja baixar o arquivo)
-Em outro terminal, execute o Leecher passando o caminho do arquivo de metadados gerado na pasta do Seeder (`parts_5001`):
+### Passo 2: Iniciar os Leechers (Nós que desejam baixar o arquivo)
+Em outros terminais, execute os Leechers passando o caminho do arquivo de metadados gerado na pasta do Seeder (`parts_5001`) e a lista de seus respectivos vizinhos:
 
 ```bash
-# Executa o Leecher na porta 5002, com vizinhos 5001 e 5003, apontando para o arquivo de metadados
+# Executa o Leecher na porta 5002, tendo 5001 e 5003 como vizinhos
 python3 main.py 5002 5001 5003 -m parts_5001/file_A.bin_metadata.json
+```
+
+---
+
+## 👥 Cenário de Teste com 4 Peers (Múltiplos Vizinhos)
+
+O argumento de vizinhos é dinâmico. Para testar com **4 peers** simultâneos ativos (portas 5001, 5002, 5003 e 5004), cada nó deve ser iniciado especificando todos os outros nós como vizinhos:
+
+```bash
+# Terminal 1 - Seeder (porta 5001, vizinhos: 5002, 5003 e 5004)
+python3 main.py 5001 5002 5003 5004 -f base_files/file_A.bin
+
+# Terminal 2 - Leecher A (porta 5002, vizinhos: 5001, 5003 e 5004)
+python3 main.py 5002 5001 5003 5004 -m parts_5001/file_A.bin_metadata.json
+
+# Terminal 3 - Leecher B (porta 5003, vizinhos: 5001, 5002 e 5004)
+python3 main.py 5003 5001 5002 5004 -m parts_5001/file_A.bin_metadata.json
+
+# Terminal 4 - Leecher C (porta 5004, vizinhos: 5001, 5002 e 5003)
+python3 main.py 5004 5001 5002 5003 -m parts_5001/file_A.bin_metadata.json
 ```
 
 ---

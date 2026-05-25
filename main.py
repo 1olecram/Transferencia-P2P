@@ -26,14 +26,10 @@ def main():
         help="Porta TCP em que este Peer irá escutar conexões de entrada."
     )
     parser.add_argument(
-        'porta_vizinho_1',
+        'vizinhos',
         type=int,
-        help="Porta TCP do primeiro nó vizinho."
-    )
-    parser.add_argument(
-        'porta_vizinho_2',
-        type=int,
-        help="Porta TCP do segundo nó vizinho."
+        nargs='+',
+        help="Porta(s) TCP dos nós vizinhos (uma ou mais separadas por espaço)."
     )
     parser.add_argument(
         '--file', '-f',
@@ -56,7 +52,7 @@ def main():
 
     args = parser.parse_args()
     minha_porta = args.minha_porta
-    vizinhos = [args.porta_vizinho_1, args.porta_vizinho_2]
+    vizinhos = args.vizinhos
 
     if minha_porta in vizinhos:
         print(f"[Erro] A porta local ({minha_porta}) não pode ser igual às portas dos vizinhos.")
