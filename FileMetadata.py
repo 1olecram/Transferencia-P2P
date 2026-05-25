@@ -126,3 +126,51 @@ class FileMetadata:
         with open(json_path, 'w', encoding='utf-8') as f:
             json.dump(self.to_dict(), f, indent=4)
         print(f"Metadados salvos em: {json_path}")
+
+    @staticmethod
+    def reconstruct_file(storage_dir, metadata):
+        """Reconstrói o arquivo original a partir dos chunks salvos e valida o hash global.
+
+        Args:
+            storage_dir (str): Diretório físico onde os chunks estão salvos.
+            metadata (dict): Dicionário de metadados do arquivo.
+
+        Returns:
+            tuple[bool, str]: Uma tupla (sucesso, mensagem de status/erro).
+        """
+        if metadata is None:
+            return False, "[Erro] Nenhum metadado carregado."
+
+        original_name = metadata["original_name"]
+        num_blocks = metadata["num_blocks"]
+        output_file_path = os.path.join(storage_dir, original_name)
+
+        print(f"\n[FileMetadata] Reconstrói arquivo original em: {output_file_path}")
+        try:
+            with open(output_file_path, 'wb') as out_f:
+                for i in range(num_blocks):
+                    chunk_path = os.path.join(storage_dir, f"chunk_{i}")
+                    if not os.path.exists(chunk_path):
+                        return False, f"[Erro] Falha ao reconstruir: Chunk {i} está faltando!"
+                    with open(chunk_path, 'rb') as chunk_f:
+                        out_f.write(chunk_f.read())
+
+            # Valida hash global do arquivo reconstruído
+            full_hash = hashlib.sha256()
+            with open(output_file_path, 'rb') as out_f:
+                while True:
+                    chunk = out_f.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    full_hash.update(chunk)
+
+            reconstructed_hash = full_hash.hexdigest()
+            if reconstructed_hash == metadata["file_hash"]:
+                msg = f"[Sucesso] Arquivo '{original_name}' reconstruído com sucesso!\n -> Hash global validado: {reconstructed_hash}"
+                return True, msg
+            else:
+                msg = f"[Erro] Falha na validação do arquivo reconstruído!\n -> Esperado: {metadata['file_hash']}\n -> Obtido: {reconstructed_hash}"
+                return False, msg
+        except Exception as e:
+            return False, f"[Erro] Falha ao reconstruir arquivo: {e}"
+
