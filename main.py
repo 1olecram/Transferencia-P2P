@@ -113,7 +113,7 @@ def main():
     time.sleep(0.5)
 
     # Validação inicial de blocos para Leecher
-    if args.metadata:
+    if args.metadata and peer.metadata:
         peer.validate_and_update_blocks()
         downloaded = sum(peer.blocks_present) if peer.blocks_present else 0
         print(f"[Leecher] Chunks válidos detectados localmente: {downloaded}/{peer.metadata['num_blocks']}")
