@@ -47,6 +47,12 @@ def main():
         default=None,
         help="Caminho do arquivo JSON de metadados para atuar como Leecher."
     )
+    parser.add_argument(
+        '--block-size', '-s',
+        type=int,
+        default=1024,
+        help="Tamanho de cada bloco (chunk) em bytes para a fragmentação. Padrão é 1024 (1 KB)."
+    )
 
     args = parser.parse_args()
     minha_porta = args.minha_porta
@@ -66,8 +72,8 @@ def main():
             print(f"[Erro] Arquivo original não encontrado: {args.file}")
             sys.exit(1)
 
-        print(f"\n[Seeder] Processando e fragmentando o arquivo: {args.file}")
-        metadata_obj = FileMetadata(args.file, 1024)
+        print(f"\n[Seeder] Processando e fragmentando o arquivo: {args.file} (Tamanho do Bloco: {args.block_size} bytes)")
+        metadata_obj = FileMetadata(args.file, args.block_size)
         metadata_obj.process_file(output_dir=storage_dir)
 
         json_path = os.path.join(storage_dir, f"{metadata_obj.original_name}_metadata.json")
